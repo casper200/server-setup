@@ -1,5 +1,4 @@
 # server-setup
-Набор адаптивных скриптов для полной настройки сервера Debian 13.
 # Debian 13 Server Setup — Полная настройка сервера
 
 ![Debian](https://img.shields.io/badge/Debian-13-red)
@@ -11,51 +10,80 @@
 
 ### Базовая настройка
 - ✅ Обновление системы
-- ✅ Установка пакетов: unattended-upgrades, apt-listchanges, sudo, ufw, curl, git, mc, fail2ban, htop, nload, net-tools
-- ✅ Настройка автоматических обновлений безопасности
-- ✅ Настройка репозиториев (contrib, non-free, non-free-firmware)
+- ✅ Установка всех пакетов
+- ✅ Настройка автоматических обновлений
+- ✅ Настройка репозиториев
 
-### Сеть и DNS
+### Сеть, DNS, NTP
 - ✅ Настройка systemd-networkd (адаптивно)
-- ✅ Настройка статического IP
-- ✅ Настройка DNS через systemd-resolved (Google DNS + Cloudflare)
-- ✅ Проверка сети и DNS
-
-### Синхронизация времени (NTP)
-- ✅ Настройка systemd-timesyncd
-- ✅ Российские NTP серверы
-- ✅ Fallback NTP серверы
+- ✅ Настройка DNS через systemd-resolved
+- ✅ Настройка NTP синхронизации
 
 ### SSH и безопасность
-- ✅ Создание нового пользователя
-- ✅ Настройка SSH ключей (ввод или генерация)
+- ✅ Создание пользователя
+- ✅ Настройка SSH ключей
 - ✅ Смена порта SSH
-- ✅ Отключение root login
-- ✅ Отключение аутентификации по паролю
-- ✅ Настройка UFW (фаервол)
-- ✅ Настройка fail2ban (защита от брутфорса)
+- ✅ Настройка UFW и fail2ban
 
 ### Системные настройки
-- ✅ Настройка hostname
-- ✅ Создание SWAP файла
-- ✅ Настройка локалей (ru_RU.UTF-8, en_US.UTF-8)
-- ✅ Установка часового пояса (Asia/Yekaterinburg)
-- ✅ Настройка ротации логов (800MB, 2 недели)
+- ✅ Hostname, локали, часовой пояс
+- ✅ SWAP, ротация логов
 
-### Дополнительные сервисы (опционально)
+### 🆕 Очистка системы
+- ✅ Очистка APT кэша
+- ✅ Очистка логов
+- ✅ Очистка временных файлов
+- ✅ Автоматическая очистка через cron
+
+### 🆕 Диагностика
+- ✅ Полная диагностика системы
+- ✅ Проверка всех служб
+- ✅ Отчет в файл
+- ✅ Установка NetData и Node Exporter
+
+### 🆕 Резервное копирование (rsync)
+- ✅ Настройка rsync
+- ✅ Ежедневные/еженедельные/ежемесячные бэкапы
+- ✅ Бэкап конфигураций, баз данных, Docker
+- ✅ Скрипт восстановления
+
+### Дополнительные сервисы
 - ✅ Docker + Docker Compose
 - ✅ NetBird (VPN)
 - ✅ Nginx Proxy Manager
 
 ## 📋 Скрипты
 
-| Файл | Описание |
-|------|----------|
-| `01-system-audit.sh` | Аудит системы, определение конфигурации, создание бэкапов |
-| `02-initial-setup.sh` | Обновление, установка пакетов, автоматические обновления |
-| `03-network-dns-ntp.sh` | Настройка сети, DNS, NTP |
-| `04-ssh-security.sh` | Настройка SSH, UFW, fail2ban, системные настройки |
-| `05-install-services.sh` | Установка Docker, NetBird, NPM |
+| № | Файл | Описание |
+|---|------|----------|
+| 1 | `01-system-audit.sh` | Аудит системы, создание бэкапов |
+| 2 | `02-initial-setup.sh` | Установка пакетов, обновления |
+| 3 | `03-network-dns-ntp.sh` | Настройка сети, DNS, NTP |
+| 4 | `04-ssh-security.sh` | Настройка SSH, UFW, fail2ban |
+| 5 | `05-install-services.sh` | Установка Docker, NetBird, NPM |
+| 6 | `06-system-cleanup.sh` | 🆕 Очистка системы |
+| 7 | `07-system-diagnostic.sh` | 🆕 Диагностика системы |
+| 8 | `08-rsync-setup.sh` | 🆕 Настройка rsync и бэкапов |
+
+## 🚀 Быстрый старт
+
+```bash
+# 1. Клонирование
+git clone https://github.com/yourusername/debian13-server-setup.git
+cd debian13-server-setup
+
+# 2. Права на выполнение
+chmod +x *.sh
+
+# 3. Последовательный запуск
+sudo ./01-system-audit.sh          # Аудит и бэкапы
+sudo ./02-initial-setup.sh         # Базовые пакеты
+sudo ./03-network-dns-ntp.sh       # Сеть, DNS, NTP
+sudo ./04-ssh-security.sh          # SSH, UFW, fail2ban
+sudo ./05-install-services.sh      # Docker, NetBird, NPM
+sudo ./06-system-cleanup.sh        # 🆕 Очистка
+sudo ./07-system-diagnostic.sh     # 🆕 Диагностика
+sudo ./08-rsync-setup.sh           # 🆕 Бэкапы
 
 ## 🚀 Быстрый старт
 
@@ -99,7 +127,51 @@ sudo ./05-install-services.sh      # Docker, NetBird, NPM
 5. Сервисы (05-install-services.sh)
     Интерактивный выбор
     Docker, NetBird, NPM
+6. Очистка (06-system-cleanup.sh)
+    Очищает APT кэш
+    Очищает логи (15 дней, 800MB)
+    Удаляет временные файлы
+    Очищает кэш Docker
+    Создает скрипт автоматической очистки
+    Настраивает cron (еженедельно)
+7. Диагностика (07-system-diagnostic.sh)
+    Собирает полную информацию о системе
+    Проверяет все службы
+    Проверяет сеть, DNS, NTP
+    Проверяет UFW, fail2ban
+    Создает отчет в файл
+    Устанавливает NetData (опционально)
+    Устанавливает Node Exporter (опционально)
+8. Архивация (08-rsync-setup.sh)
+    Устанавливает rsync
+    Создает директории для бэкапов
+    Создает скрипт бэкапа (каталоги, базы данных)
+    Создает скрипт восстановления
+    Настраивает cron (ежедневно, еженедельно, ежемесячно)
+    Бэкапит: /etc, /home, /var/www, /var/lib/docker, /opt, /root/.ssh, MySQL, PostgreSQL
 
+📁 Структура бэкапов
+text
+/backup/
+├── daily/
+│   └── 20260101_020000.tar.gz
+├── weekly/
+│   └── 20260105_030000.tar.gz
+├── monthly/
+│   └── 20260101_040000.tar.gz
+└── logs/
+    └── backup_daily_20260101.log
+
+🔧 Команды для управления
+bash
+# Ручной бэкап
+/usr/local/bin/backup.sh daily
+# Восстановление
+/usr/local/bin/restore.sh /backup/daily/20260101_020000.tar.gz
+# Очистка вручную
+/usr/local/bin/cleanup.sh
+# Диагностика (создает отчет)
+./07-system-diagnostic.sh
 📁 Бэкапы
 Все бэкапы сохраняются в:
 text
@@ -154,4 +226,7 @@ text
 12. ✅ "Часовой пояс" — Asia/Yekaterinburg
 13. ✅ "Ротация логов" — 800MB, 2 недели
 14. ✅ "Hostname" — настройка имени хоста
+15. ✅ "Очистка"
+16. ✅ "Диагностика"
+17. ✅ "Бэкапы"
 Все скрипты адаптивные, с бэкапами и проверками!
