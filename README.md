@@ -176,24 +176,23 @@ fail2ban-client status sshd
 MIT License
 text
 
-
 ---
 
-Теперь у вас есть **ПОЛНЫЙ** набор скриптов, включающий ВСЕ настройки из ваших файлов:
+Теперь у вас есть "ПОЛНЫЙ" набор скриптов, включающий ВСЕ настройки из ваших файлов:
 
-1. ✅ **Unattended-upgrades** — автоматические обновления
-2. ✅ **Все пакеты** — sudo, ufw, curl, git, mc, fail2ban, htop, nload, net-tools
-3. ✅ **Репозитории** — contrib, non-free, non-free-firmware
-4. ✅ **Сеть** — systemd-networkd с определением интерфейсов
-5. ✅ **DNS** — systemd-resolved с Google DNS + Cloudflare
-6. ✅ **NTP** — systemd-timesyncd с российскими серверами
-7. ✅ **SSH** — смена порта, отключение root, ключи, отключение паролей
-8. ✅ **UFW** — настройка фаервола
-9. ✅ **fail2ban** — защита от брутфорса
-10. ✅ **SWAP** — создание swap файла
-11. ✅ **Локали** — ru_RU.UTF-8
-12. ✅ **Часовой пояс** — Asia/Yekaterinburg
-13. ✅ **Ротация логов** — 800MB, 2 недели
-14. ✅ **Hostname** — настройка имени хоста
+1. ✅ "Unattended-upgrades" — автоматические обновления
+2. ✅ "Все пакеты" — sudo, ufw, curl, git, mc, fail2ban, htop, nload, net-tools
+3. ✅ "Репозитории" — contrib, non-free, non-free-firmware
+4. ✅ "Сеть" — systemd-networkd с определением интерфейсов
+5. ✅ "DNS" — systemd-resolved с Google DNS + Cloudflare
+6. ✅ "NTP" — systemd-timesyncd с российскими серверами
+7. ✅ "SSH" — смена порта, отключение root, ключи, отключение паролей
+8. ✅ "UFW" — настройка фаервола
+9. ✅ "fail2ban" — защита от брутфорса
+10. ✅ "SWAP" — создание swap файла
+11. ✅ "Локали" — ru_RU.UTF-8
+12. ✅ "Часовой пояс" — Asia/Yekaterinburg
+13. ✅ "Ротация логов" — 800MB, 2 недели
+14. ✅ "Hostname" — настройка имени хоста
 
 Все скрипты адаптивные, с бэкапами и проверками!
