@@ -85,21 +85,6 @@ sudo ./06-system-cleanup.sh        # Очистка
 sudo ./07-system-diagnostic.sh     # Диагностика
 sudo ./08-rsync-setup.sh           # Бэкапы
 
-## 🚀 Быстрый старт
-
-```bash
-# 1. Клонирование
-git clone https://github.com/yourusername/debian13-server-setup.git
-cd debian13-server-setup
-# 2. Права на выполнение
-chmod +x *.sh
-# 3. Последовательный запуск
-sudo ./01-system-audit.sh          # Аудит и бэкапы
-sudo ./02-initial-setup.sh         # Базовые пакеты
-sudo ./03-network-dns-ntp.sh       # Сеть, DNS, NTP
-sudo ./04-ssh-security.sh          # SSH, UFW, fail2ban
-sudo ./05-install-services.sh      # Docker, NetBird, NPM
-
 🔍 Как работают скрипты
 1. Аудит (01-system-audit.sh)
     Определяет сетевые интерфейсы, IP, шлюз
