@@ -1,9 +1,9 @@
 #!/bin/bash
 # =============================================================================
-# Debian 13 Server - Настройка rsync для бэкапов
+# Debian 13 Server - Настройка rsync для бэкапов (ИСПРАВЛЕННАЯ)
 # =============================================================================
 # Описание: Настройка rsync, создание скриптов бэкапа, настройка cron
-# Версия: 1.0
+# Версия: 1.1
 # =============================================================================
 
 set -e
@@ -56,12 +56,11 @@ BACKUP_ROOT="/backup"
 mkdir -p "$BACKUP_ROOT"
 log_success "Директория создана: $BACKUP_ROOT"
 
-# Создание поддиректорий
 mkdir -p "$BACKUP_ROOT"/{daily,weekly,monthly,logs}
 log_success "Поддиректории созданы"
 
 # =============================================================================
-# РАЗДЕЛ 3: СОЗДАНИЕ СКРИПТА БЭКАПА
+# РАЗДЕЛ 3: СОЗДАНИЕ СКРИПТА БЭКАПА (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 # =============================================================================
 log_step "Раздел 3: Создание скрипта бэкапа"
 
@@ -104,27 +103,25 @@ log_error() { log "${RED}[✗]${NC} $1"; }
 # =============================================================================
 # ОПРЕДЕЛЕНИЕ КАТАЛОГОВ ДЛЯ БЭКАПА
 # =============================================================================
-# Основные каталоги для бэкапа
 BACKUP_DIRS=(
-    "/etc"              # Конфигурации системы
-    "/home"             # Домашние директории пользователей
-    "/var/www"          # Веб-сайты
-    "/var/lib/docker"   # Docker данные
-    "/opt"              # Установленное ПО
-    "/root/.ssh"        # SSH ключи root
-    "/usr/local/bin"    # Пользовательские скрипты
+    "/etc"
+    "/home"
+    "/root/.ssh"
+    "/usr/local/bin"
+    "/opt"
 )
 
-# Дополнительные каталоги для бэкапа (проверяем существование)
 ADDITIONAL_DIRS=(
-    "/var/lib/mysql"    # MySQL базы данных
-    "/var/lib/postgresql" # PostgreSQL базы данных
-    "/srv"              # Сервисные данные
-    "/var/spool/cron"   # Cron задачи
+    "/var/www"
+    "/var/lib/docker"
+    "/var/lib/mysql"
+    "/var/lib/postgresql"
+    "/srv"
+    "/var/spool/cron"
 )
 
 # =============================================================================
-# ФУНКЦИЯ БЭКАПА
+# ФУНКЦИЯ БЭКАПА (С ПРОДОЛЖЕНИЕМ ПРИ ОШИБКЕ)
 # =============================================================================
 backup_dirs() {
     local source="$1"
@@ -132,8 +129,12 @@ backup_dirs() {
     
     if [ -d "$source" ] && [ ! -L "$source" ]; then
         log_info "Бэкап: $source"
-        rsync -avz --delete --exclude="*.pid" --exclude="*.sock" --exclude="tmp/*" "$source/" "$target/" 2>&1 | tee -a "$LOG_FILE"
-        return 0
+        if rsync -avz --delete --ignore-errors --exclude="*.pid" --exclude="*.sock" --exclude="tmp/*" --exclude="cache/*" "$source/" "$target/" 2>&1 | tee -a "$LOG_FILE"; then
+            return 0
+        else
+            log_warn "rsync завершился с ошибкой для $source, но продолжаем..."
+            return 1
+        fi
     else
         log_warn "Пропуск: $source (не существует или является ссылкой)"
         return 1
@@ -147,86 +148,42 @@ log "=========================================="
 log "НАЧАЛО БЭКАПА: $BACKUP_TYPE"
 log "=========================================="
 
-# Создание директории бэкапа
 mkdir -p "$BACKUP_DIR"
 log_info "Директория бэкапа: $BACKUP_DIR"
 
 # Бэкап основных каталогов
 for dir in "${BACKUP_DIRS[@]}"; do
     target_name=$(basename "$dir")
-    backup_dirs "$dir" "$BACKUP_DIR/$target_name"
+    target_name="${target_name//./_}"
+    target_name="${target_name//\//_}"
+    backup_dirs "$dir" "$BACKUP_DIR/$target_name" || true
 done
 
 # Бэкап дополнительных каталогов (только если существуют)
 for dir in "${ADDITIONAL_DIRS[@]}"; do
     if [ -d "$dir" ] && [ ! -L "$dir" ]; then
         target_name=$(basename "$dir")
-        backup_dirs "$dir" "$BACKUP_DIR/$target_name"
+        target_name="${target_name//./_}"
+        target_name="${target_name//\//_}"
+        backup_dirs "$dir" "$BACKUP_DIR/$target_name" || true
     fi
 done
 
 # =============================================================================
-# БЭКАП БАЗ ДАННЫХ (если установлены)
-# =============================================================================
-log "--- Бэкап баз данных ---"
-
-# MySQL/MariaDB
-if command -v mysqldump &>/dev/null; then
-    log_info "Бэкап MySQL баз данных..."
-    mkdir -p "$BACKUP_DIR/mysql"
-    if [ -f /root/.my.cnf ]; then
-        mysqldump --all-databases --single-transaction --routines --triggers > "$BACKUP_DIR/mysql/all_databases.sql" 2>&1 | tee -a "$LOG_FILE"
-        log_success "MySQL бэкап создан"
-    else
-        log_warn "Файл /root/.my.cnf не найден, пропускаем MySQL"
-    fi
-fi
-
-# PostgreSQL
-if command -v pg_dumpall &>/dev/null; then
-    log_info "Бэкап PostgreSQL баз данных..."
-    mkdir -p "$BACKUP_DIR/postgresql"
-    if [ -f /root/.pgpass ]; then
-        pg_dumpall > "$BACKUP_DIR/postgresql/all_databases.sql" 2>&1 | tee -a "$LOG_FILE"
-        log_success "PostgreSQL бэкап создан"
-    else
-        log_warn "Файл /root/.pgpass не найден, пропускаем PostgreSQL"
-    fi
-fi
-
-# =============================================================================
-# БЭКАП КОНФИГУРАЦИЙ ПОЛЬЗОВАТЕЛЬСКИХ СЛУЖБ
-# =============================================================================
-log "--- Бэкап конфигураций служб ---"
-
-# Nginx
-if [ -d /etc/nginx ]; then
-    mkdir -p "$BACKUP_DIR/nginx"
-    cp -r /etc/nginx/* "$BACKUP_DIR/nginx/" 2>&1 | tee -a "$LOG_FILE"
-    log_info "Nginx конфигурация сохранена"
-fi
-
-# Nginx Proxy Manager
-if [ -d /opt/npm ]; then
-    mkdir -p "$BACKUP_DIR/npm"
-    cp -r /opt/npm/* "$BACKUP_DIR/npm/" 2>&1 | tee -a "$LOG_FILE"
-    log_info "NPM данные сохранены"
-fi
-
-# NetBird
-if command -v netbird &>/dev/null; then
-    netbird status > "$BACKUP_DIR/netbird_status.txt" 2>&1
-    log_info "NetBird статус сохранен"
-fi
-
-# =============================================================================
-# СОЗДАНИЕ АРХИВА (для легкого переноса)
+# СОЗДАНИЕ АРХИВА
 # =============================================================================
 log "--- Создание архива ---"
-cd "$BACKUP_DIR/.."
-tar -czf "$BACKUP_DATE.tar.gz" "$BACKUP_DATE" 2>&1 | tee -a "$LOG_FILE"
-rm -rf "$BACKUP_DIR"
-log_success "Архив создан: $BACKUP_DATE.tar.gz"
+
+cd "$BACKUP_ROOT/$BACKUP_TYPE"
+
+if tar -czf "${BACKUP_DATE}.tar.gz" "$BACKUP_DATE" 2>&1 | tee -a "$LOG_FILE"; then
+    log_info "Архив создан: ${BACKUP_DATE}.tar.gz"
+    rm -rf "$BACKUP_DIR"
+    log_info "Временная папка удалена"
+else
+    log_error "ОШИБКА: архив не создан!"
+    exit 1
+fi
 
 # =============================================================================
 # УДАЛЕНИЕ СТАРЫХ БЭКАПОВ
@@ -235,17 +192,14 @@ log "--- Удаление старых бэкапов ---"
 
 case "$BACKUP_TYPE" in
     daily)
-        # Храним 7 ежедневных бэкапов
         find "$BACKUP_ROOT/daily" -name "*.tar.gz" -mtime +7 -delete 2>/dev/null
         log_info "Старые ежедневные бэкапы удалены"
         ;;
     weekly)
-        # Храним 4 еженедельных бэкапа
         find "$BACKUP_ROOT/weekly" -name "*.tar.gz" -mtime +28 -delete 2>/dev/null
         log_info "Старые еженедельные бэкапы удалены"
         ;;
     monthly)
-        # Храним 12 ежемесячных бэкапов
         find "$BACKUP_ROOT/monthly" -name "*.tar.gz" -mtime +365 -delete 2>/dev/null
         log_info "Старые ежемесячные бэкапы удалены"
         ;;
@@ -273,45 +227,9 @@ chmod +x /usr/local/bin/backup.sh
 log_success "Скрипт бэкапа создан: /usr/local/bin/backup.sh"
 
 # =============================================================================
-# РАЗДЕЛ 4: ТЕСТОВЫЙ ЗАПУСК
+# РАЗДЕЛ 4: СОЗДАНИЕ СКРИПТА ВОССТАНОВЛЕНИЯ
 # =============================================================================
-log_step "Раздел 4: Тестовый запуск бэкапа"
-
-log_info "Запуск тестового бэкапа..."
-/usr/local/bin/backup.sh daily 2>&1 | head -20
-
-if [ -d "/backup/daily" ]; then
-    log_success "Тестовый бэкап создан"
-    ls -la /backup/daily/
-else
-    log_error "Тестовый бэкап не создан"
-fi
-
-# =============================================================================
-# РАЗДЕЛ 5: НАСТРОЙКА CRON
-# =============================================================================
-log_step "Раздел 5: Настройка автоматического бэкапа"
-
-# Добавление в cron
-if ! grep -q "backup.sh" /etc/crontab 2>/dev/null; then
-    cat >> /etc/crontab << 'EOF'
-# Резервное копирование
-0 2 * * * root /usr/local/bin/backup.sh daily
-0 3 * * 0 root /usr/local/bin/backup.sh weekly
-0 4 1 * * root /usr/local/bin/backup.sh monthly
-EOF
-    log_success "Cron настроен"
-    log_info "  • Ежедневно в 2:00"
-    log_info "  • Еженедельно в воскресенье в 3:00"
-    log_info "  • Ежемесячно 1-го числа в 4:00"
-else
-    log_info "Cron уже настроен"
-fi
-
-# =============================================================================
-# РАЗДЕЛ 6: СОЗДАНИЕ СКРИПТА ВОССТАНОВЛЕНИЯ
-# =============================================================================
-log_step "Раздел 6: Создание скрипта восстановления"
+log_step "Раздел 4: Создание скрипта восстановления"
 
 cat > /usr/local/bin/restore.sh << 'EOF'
 #!/bin/bash
@@ -347,18 +265,16 @@ fi
 
 log_info "Восстановление из: $ARCHIVE"
 
-# Создание временной директории
 TEMP_DIR=$(mktemp -d)
 cd "$TEMP_DIR"
 
-# Распаковка архива
 tar -xzf "$ARCHIVE"
 BACKUP_DATE=$(basename "$ARCHIVE" .tar.gz)
 
 log_info "Распаковка завершена"
 
 # Восстановление каталогов
-for dir in etc home var_www var_lib_docker opt root_.ssh usr_local_bin; do
+for dir in etc home var_www var_lib_docker opt root_.ssh usr_local_bin cron; do
     if [ -d "$BACKUP_DATE/$dir" ]; then
         target="/${dir//_//}"
         target="${target//root_ssh/root/.ssh}"
@@ -390,6 +306,40 @@ chmod +x /usr/local/bin/restore.sh
 log_success "Скрипт восстановления создан: /usr/local/bin/restore.sh"
 
 # =============================================================================
+# РАЗДЕЛ 5: НАСТРОЙКА CRON (ТОЛЬКО ЕЖЕМЕСЯЧНЫЙ ПО УМОЛЧАНИЮ)
+# =============================================================================
+log_step "Раздел 5: Настройка cron для бэкапа"
+
+# Проверка, есть ли уже настройки
+if ! grep -q "backup.sh" /etc/crontab 2>/dev/null; then
+    cat >> /etc/crontab << 'EOF'
+# Резервное копирование (ежемесячное)
+# 0 2 * * * root /usr/local/bin/backup.sh daily
+# 0 3 * * 0 root /usr/local/bin/backup.sh weekly
+0 4 1 * * root /usr/local/bin/backup.sh monthly
+EOF
+    log_success "Cron настроен (ежемесячный бэкап)"
+    log_info "  • Ежемесячно 1-го числа в 4:00"
+else
+    log_info "Cron уже настроен"
+fi
+
+# =============================================================================
+# РАЗДЕЛ 6: ТЕСТОВЫЙ ЗАПУСК
+# =============================================================================
+log_step "Раздел 6: Тестовый запуск бэкапа"
+
+log_info "Запуск тестового бэкапа..."
+/usr/local/bin/backup.sh monthly 2>&1 | head -30
+
+if [ -f "/backup/monthly/$(date +%Y%m%d)*.tar.gz" ] 2>/dev/null; then
+    log_success "Тестовый бэкап создан"
+    ls -lh /backup/monthly/*.tar.gz 2>/dev/null | tail -1
+else
+    log_warn "Тестовый бэкап не найден, проверьте логи"
+fi
+
+# =============================================================================
 # ИТОГОВЫЙ ОТЧЕТ
 # =============================================================================
 log_step "Настройка rsync завершена"
@@ -405,13 +355,13 @@ echo ""
 echo -e "${CYAN}Команды:${NC}"
 echo "  # Запуск бэкапа вручную"
 echo "  /usr/local/bin/backup.sh daily"
+echo "  /usr/local/bin/backup.sh weekly"
+echo "  /usr/local/bin/backup.sh monthly"
 echo ""
 echo "  # Восстановление"
 echo "  /usr/local/bin/restore.sh /backup/daily/20260101_020000.tar.gz"
 echo ""
 echo -e "${CYAN}Cron задачи (автоматический бэкап):${NC}"
-echo "  0 2 * * * /usr/local/bin/backup.sh daily     # Ежедневно в 2:00"
-echo "  0 3 * * 0 /usr/local/bin/backup.sh weekly    # Еженедельно в 3:00"
-echo "  0 4 1 * * /usr/local/bin/backup.sh monthly   # Ежемесячно в 4:00"
+grep "backup.sh" /etc/crontab 2>/dev/null || echo "  Не настроен"
 echo ""
 read -p "Нажмите Enter для продолжения..."
