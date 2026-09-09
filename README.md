@@ -61,9 +61,9 @@
 | 3 | `03-network-dns-ntp.sh` | Настройка сети, DNS, NTP |
 | 4 | `04-ssh-security.sh` | Настройка SSH, UFW, fail2ban |
 | 5 | `05-install-services.sh` | Установка Docker, NetBird, NPM |
-| 6 | `06-system-cleanup.sh` | 🆕 Очистка системы |
-| 7 | `07-system-diagnostic.sh` | 🆕 Диагностика системы |
-| 8 | `08-rsync-setup.sh` | 🆕 Настройка rsync и бэкапов |
+| 6 | `06-system-cleanup.sh` | Очистка системы |
+| 7 | `07-system-diagnostic.sh` | Диагностика системы |
+| 8 | `08-rsync-setup.sh` | Настройка rsync и бэкапов |
 
 ## 🚀 Быстрый старт
 
@@ -81,9 +81,9 @@ sudo ./02-initial-setup.sh         # Базовые пакеты
 sudo ./03-network-dns-ntp.sh       # Сеть, DNS, NTP
 sudo ./04-ssh-security.sh          # SSH, UFW, fail2ban
 sudo ./05-install-services.sh      # Docker, NetBird, NPM
-sudo ./06-system-cleanup.sh        # 🆕 Очистка
-sudo ./07-system-diagnostic.sh     # 🆕 Диагностика
-sudo ./08-rsync-setup.sh           # 🆕 Бэкапы
+sudo ./06-system-cleanup.sh        # Очистка
+sudo ./07-system-diagnostic.sh     # Диагностика
+sudo ./08-rsync-setup.sh           # Бэкапы
 
 ## 🚀 Быстрый старт
 
