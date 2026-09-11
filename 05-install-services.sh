@@ -1,16 +1,16 @@
 #!/bin/bash
 # =============================================================================
-# Debian 13 Server - Установка Docker, NetBird, Nginx Proxy Manager
+# Debian 13 Server - Установка Docker, NetBird, NPM и RClone
 # =============================================================================
-# Описание: Установка дополнительных сервисов
-# Версия: 1.0
+# Описание: Интерактивная установка дополнительных системных сервисов
+# Версия: 1.2 (С поддержкой RClone)
 # =============================================================================
 
 set -e
 set -u
 
 # =============================================================================
-# ЦВЕТНОЙ ВЫВОД
+# ЦВЕТНОЙ ВЫВОД И ЛОГИКА
 # =============================================================================
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -18,7 +18,6 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 WHITE='\033[1;37m'
-PURPLE='\033[0;35m'
 NC='\033[0m'
 
 log_info() { echo -e "${GREEN}[✓]${NC} $1"; }
@@ -32,112 +31,118 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-BACKUP_DIR=$(ls -td /root/backup_* 2>/dev/null | head -1)
-LOG_FILE="$BACKUP_DIR/services_install.log"
+# Логирование работы скрипта в глобальный каталог
+mkdir -p /backup/logs
+LOG_FILE="/backup/logs/services_install_$(date +%Y%m%d).log"
+exec > >(tee -i "$LOG_FILE") 2>&1
 
 # =============================================================================
 # МЕНЮ ВЫБОРА
 # =============================================================================
 log_step "Выбор сервисов для установки"
 
-echo -e "${YELLOW}Выберите сервисы для установки:${NC}"
+echo -e "${YELLOW}Выберите сервисы для установки (можно выбрать всё или по отдельности):${NC}"
 echo "1) Docker + Docker Compose"
 echo "2) NetBird (VPN)"
-echo "3) Nginx Proxy Manager"
-echo "4) Все сервисы"
-echo "5) Выйти"
-read -p "Ваш выбор (1-5): " CHOICE
+echo "3) Nginx Proxy Manager (Требует Docker)"
+echo "4) RClone (Окружение для бэкапов в облако)"
+echo "5) УСТАНОВИТЬ ВСЕ СЕРВИСЫ КАСКАДОМ"
+echo "6) Выйти"
+echo ""
+read -p "Ваш выбор (1-6): " CHOICE
+
+INSTALL_DOCKER=false
+INSTALL_NETBIRD=false
+INSTALL_NPM=false
+INSTALL_RCLONE=false
 
 case "$CHOICE" in
     1) INSTALL_DOCKER=true ;;
     2) INSTALL_NETBIRD=true ;;
     3) INSTALL_NPM=true ;;
-    4) INSTALL_DOCKER=true; INSTALL_NETBIRD=true; INSTALL_NPM=true ;;
-    5) exit 0 ;;
+    4) INSTALL_RCLONE=true ;;
+    5) INSTALL_DOCKER=true; INSTALL_NETBIRD=true; INSTALL_NPM=true; INSTALL_RCLONE=true ;;
+    6) exit 0 ;;
     *) log_error "Неверный выбор"; exit 1 ;;
 esac
 
 # =============================================================================
-# УСТАНОВКА DOCKER
+# 1. УСТАНОВКА DOCKER
 # =============================================================================
-if [ "${INSTALL_DOCKER:-false}" = true ]; then
-    log_step "Установка Docker"
+if [ "$INSTALL_DOCKER" = true ]; then
+    log_step "Установка Docker и Docker Compose"
 
-    log_info "Удаление старых версий..."
+    log_info "Очистка возможных старых конфликтующих пакетов..."
     apt remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
 
-    log_info "Установка зависимостей..."
-    apt update
-    apt install -y curl apt-transport-https ca-certificates gnupg lsb-release
+    log_info "Обновление зависимостей..."
+    apt update && apt install -y curl apt-transport-https ca-certificates gnupg lsb-release
 
-    log_info "Загрузка и установка Docker..."
-    curl -fsSL https://get.docker.com -o get-docker.sh
+    log_info "Запуск официального инсталлятора Docker..."
+    curl -fsSL https://docker.com -o get-docker.sh
     sh get-docker.sh
+    rm -f get-docker.sh
 
-    # Добавление пользователя в группу docker
-    read -p "Введите имя пользователя для добавления в группу docker: " DOCKER_USER
+    # Интерактивное добавление пользователя в группу
+    echo ""
+    read -p "Введите имя вашего обычного пользователя (например, vasa) для работы с Docker без sudo: " DOCKER_USER
     if [ ! -z "$DOCKER_USER" ] && id "$DOCKER_USER" &>/dev/null; then
         usermod -aG docker "$DOCKER_USER"
-        log_success "Пользователь $DOCKER_USER добавлен в группу docker"
+        log_success "Пользователь $DOCKER_USER успешно добавлен в группу docker!"
+    else
+        log_warn "Пользователь не указан или не найден. Пропускаем."
     fi
 
     systemctl enable --now docker
 
     if systemctl is-active --quiet docker; then
-        log_success "Docker установлен и запущен"
-        docker --version
+        log_success "Docker успешно развернут и запущен: $(docker --version)"
     else
-        log_error "Docker не запустился"
+        log_error "Ошибка: Демон Docker не смог запуститься."
     fi
 fi
 
 # =============================================================================
-# УСТАНОВКА NETBIRD
+# 2. УСТАНОВКА NETBIRD
 # =============================================================================
-if [ "${INSTALL_NETBIRD:-false}" = true ]; then
-    log_step "Установка NetBird"
+if [ "$INSTALL_NETBIRD" = true ]; then
+    log_step "Установка NetBird VPN"
 
-    log_info "Добавление репозитория NetBird..."
-    curl -sSL https://pkgs.netbird.io/debian/public.key | gpg --dearmor --output /usr/share/keyrings/netbird-archive-keyring.gpg
-    echo 'deb [signed-by=/usr/share/keyrings/netbird-archive-keyring.gpg] https://pkgs.netbird.io/debian stable main' | tee /etc/apt/sources.list.d/netbird.list
+    log_info "Импорт официальных ключей и репозитория NetBird..."
+    mkdir -p /usr/share/keyrings
+    curl -sSL https://netbird.io | gpg --dearmor --yes --output /usr/share/keyrings/netbird-archive-keyring.gpg
+    echo 'deb [signed-by=/usr/share/keyrings/netbird-archive-keyring.gpg] https://netbird.io stable main' | tee /etc/apt/sources.list.d/netbird.list
 
-    apt update
-    apt install -y netbird
+    apt update && apt install -y netbird
 
-    read -p "Введите Setup Key для NetBird: " NETBIRD_KEY
+    echo ""
+    read -p "Если у вас есть готовый Setup Key от NetBird, введите его (или нажмите Enter для пропуска): " NETBIRD_KEY
     if [ ! -z "$NETBIRD_KEY" ]; then
         netbird up --setup-key "$NETBIRD_KEY"
-
-        if systemctl is-enabled --quiet netbird 2>/dev/null; then
-            log_success "NetBird установлен и настроен"
-            netbird status
-            ip -br link show wt0
-        else
-            log_error "NetBird не настроен"
-        fi
+        log_success "NetBird успешно подключен к сети!"
+        netbird status
     else
-        log_warn "Setup Key не введен, пропускаем настройку"
+        log_warn "Ключ не введен. Сервис установлен, но требует ручной авторизации через команду 'netbird up'"
     fi
 fi
 
 # =============================================================================
-# УСТАНОВКА NPM
+# 3. УСТАНОВКА NGINX PROXY MANAGER
 # =============================================================================
-if [ "${INSTALL_NPM:-false}" = true ]; then
+if [ "$INSTALL_NPM" = true ]; then
     log_step "Установка Nginx Proxy Manager"
 
     if ! command -v docker &>/dev/null; then
-        log_error "Docker не установлен! Сначала установите Docker"
+        log_error "Критическая ошибка: Для работы NPM необходим Docker! Перезапустите скрипт и выберите пункт 1 или 5."
         exit 1
     fi
 
-    log_info "Создание директории для NPM..."
+    log_info "Создание изолированной директории /opt/npm..."
     mkdir -p /opt/npm
     cd /opt/npm
 
-    log_info "Создание docker-compose.yml..."
+    log_info "Генерация файла конфигурации docker-compose.yml..."
     cat > docker-compose.yml << 'EOF'
-version: '3.8'
 services:
   app:
     image: 'jc21/nginx-proxy-manager:latest'
@@ -151,38 +156,57 @@ services:
       - ./letsencrypt:/etc/letsencrypt
 EOF
 
-    log_info "Запуск NPM..."
+    log_info "Развертывание контейнера через Docker Compose..."
     docker compose up -d
-
-    sleep 5
+    sleep 4
 
     if docker ps | grep -q "nginx-proxy-manager"; then
-        log_success "Nginx Proxy Manager запущен"
-
-        HOST_IP=$(ip addr show | grep -E "inet " | grep -v "127.0.0.1" | head -1 | awk '{print $2}' | cut -d/ -f1)
-        echo ""
-        echo -e "${CYAN}Доступ к панели управления:${NC}"
-        echo -e "http://${HOST_IP:-<IP_АДРЕС>}:81"
-        echo ""
-        echo -e "${YELLOW}Логин по умолчанию:${NC}"
-        echo "  Email: admin@example.com"
-        echo "  Password: changeme"
+        log_success "Nginx Proxy Manager успешно запущен!"
+        
+        # Автоматическое определение текущего IP сервера для удобства вывода
+        HOST_IP=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7}' || echo "<IP_АДРЕС>")
+        echo -e "\n${CYAN}═══════════════════════════════════════════════════${NC}"
+        echo -e "Панель управления доступна по адресу: ${GREEN}http://${HOST_IP}:81${NC}"
+        echo -e "Данные для первого входа по умолчанию:"
+        echo -e "  • Email:    ${WHITE}admin@example.com${NC}"
+        echo -e "  • Password: ${WHITE}changeme${NC}"
+        echo -e "${CYAN}═══════════════════════════════════════════════════${NC}\n"
     else
-        log_error "NPM не запустился"
-        docker compose logs
+        log_error "Контейнер NPM не смог запуститься. Проверьте порты 80/443/81"
+        docker compose logs --tail=20
     fi
+fi
+
+# =============================================================================
+# 4. УСТАНОВКА RCLONE
+# =============================================================================
+if [ "$INSTALL_RCLONE" = true ]; then
+    log_step "Установка утилиты работы с облаками RClone"
+
+    apt install -y unzip
+    if ! command -v rclone &>/dev/null; then
+        log_info "Загрузка официального бинарного инсталлятора RClone..."
+        curl https://rclone.org | bash
+    else
+        log_info "RClone уже присутствует в операционной системе."
+    fi
+    
+    log_success "RClone готов к работе: $(rclone --version | head -1)"
+    echo -e "\n${YELLOW}Следующий шаг для бэкапов:${NC}"
+    echo -e "После завершения этого скрипта выполните команду: ${CYAN}rclone config${NC} для привязки вашего облака."
 fi
 
 # =============================================================================
 # ИТОГОВЫЙ ОТЧЕТ
 # =============================================================================
-log_step "Установка сервисов завершена"
+log_step "Установка выбранных сервисов завершена"
 
-echo -e "${GREEN}✅${NC} Установка завершена!"
+echo -e "${GREEN}✅ Процесс развертывания завершен успешно!${NC}"
+echo -e "Полный лог установки сохранен в: ${WHITE}$LOG_FILE${NC}"
 echo ""
-echo -e "${YELLOW}📋 Установленные сервисы:${NC}"
-[ "${INSTALL_DOCKER:-false}" = true ] && echo "  • Docker: $(docker --version 2>/dev/null || echo 'не установлен')"
-[ "${INSTALL_NETBIRD:-false}" = true ] && echo "  • NetBird: установлен"
-[ "${INSTALL_NPM:-false}" = true ] && echo "  • Nginx Proxy Manager: порт 81"
+echo -e "${YELLOW}📋 Статус компонентов на сервере:${NC}"
+echo -e "  • Docker:            $(docker --version 2>/dev/null || echo -e '${RED}не установлен${NC}')"
+echo -e "  • NetBird VPN:       $(command -v netbird &>/dev/null && echo -e '${GREEN}установлен${NC}' || echo -e '${RED}не установлен${NC}')"
+echo -e "  • Nginx Proxy:       $(docker ps | grep -q "nginx-proxy-manager" && echo -e '${GREEN}активен на порту 81${NC}' || echo -e '${RED}не запущен / не установлен${NC}')"
+echo -e "  • RClone Cloud:      $(command -v rclone &>/dev/null && echo -e '${GREEN}установлен${NC}' || echo -e '${RED}не установлен${NC}')"
 echo ""
-echo -e "${CYAN}📁 Бэкапы:${NC} $BACKUP_DIR"
