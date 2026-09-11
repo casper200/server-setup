@@ -210,3 +210,4 @@ echo -e "  • NetBird VPN:       $(command -v netbird &>/dev/null && echo -e '$
 echo -e "  • Nginx Proxy:       $(docker ps | grep -q "nginx-proxy-manager" && echo -e '${GREEN}активен на порту 81${NC}' || echo -e '${RED}не запущен / не установлен${NC}')"
 echo -e "  • RClone Cloud:      $(command -v rclone &>/dev/null && echo -e '${GREEN}установлен${NC}' || echo -e '${RED}не установлен${NC}')"
 echo ""
+read -p "Нажмите Enter для продолжения..."
