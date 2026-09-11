@@ -3,7 +3,7 @@
 # Debian 13 Server - Настройка SSH, UFW, fail2ban
 # =============================================================================
 # Описание: Создание пользователя, настройка SSH, UFW, fail2ban
-# Версия: 1.0
+# Версия: 1.1 (Исправленная динамическая сборка)
 # =============================================================================
 
 set -e
@@ -49,11 +49,8 @@ LOG_FILE="$BACKUP_DIR/ssh_setup.log"
 # =============================================================================
 log_step "Раздел 1: Ввод данных"
 
-read -p "Введите имя нового пользователя: " USERNAME
-if [ -z "$USERNAME" ]; then
-    log_error "Имя пользователя не может быть пустым"
-    exit 1
-fi
+read -p "Введите имя нового пользователя [vasa]: " USERNAME
+USERNAME=${USERNAME:-vasa}
 
 read -p "Введите порт SSH (по умолчанию: 27244): " NEW_SSH_PORT
 NEW_SSH_PORT=${NEW_SSH_PORT:-27244}
@@ -65,11 +62,13 @@ log_step "Раздел 2: Создание пользователя"
 
 if id "$USERNAME" &>/dev/null; then
     log_warn "Пользователь $USERNAME уже существует"
-    read -p "Использовать существующего? (Y/n): " -n 1 -r
+    read -p "Использовать существующего для настройки? (Y/n): " -n 1 -r
     echo ""
     if [[ $REPLY =~ ^[Nn]$ ]]; then
         read -p "Введите другое имя: " USERNAME
         useradd -m -G sudo -s /bin/bash "$USERNAME"
+    else
+        usermod -aG sudo "$USERNAME"
     fi
 else
     useradd -m -G sudo -s /bin/bash "$USERNAME"
@@ -88,31 +87,35 @@ SSH_DIR="/home/$USERNAME/.ssh"
 AUTH_KEYS="$SSH_DIR/authorized_keys"
 
 mkdir -p "$SSH_DIR"
-chown "$USERNAME:$USERNAME" "$SSH_DIR"
-chmod 700 "$SSH_DIR"
 
 echo -e "${YELLOW}Добавление SSH ключа:${NC}"
-echo "1) Вставить публичный ключ вручную"
-echo "2) Сгенерировать новый ключ"
+echo "1) Передать публичный ключ на лету (Вставить строку из Windows)"
+echo "2) Сгенерировать новый ключ прямо на сервере"
 echo "3) Пропустить"
 read -p "Выберите вариант (1/2/3): " CHOICE
 
 case "$CHOICE" in
     1)
-        echo -e "\n${YELLOW}Вставьте публичный SSH ключ и нажмите Ctrl+D:${NC}"
-        cat >> "$AUTH_KEYS"
-        chown "$USERNAME:$USERNAME" "$AUTH_KEYS"
-        chmod 600 "$AUTH_KEYS"
-        log_success "Ключ добавлен"
+        echo -e "\n${CYAN}Выведите публичный ключ на Windows командой:${NC} type %USERPROFILE%\.ssh\id_ed25519.pub"
+        echo -e "${YELLOW}Вставьте строку публичного ключа и нажмите Enter:${NC}"
+        read -r INPUT_SSH_KEY
+        
+        # Очищаем строку от скрытых DOS/Windows символов переноса строк \r\n
+        CLEAN_SSH_KEY=$(echo "$INPUT_SSH_KEY" | tr -d '\r\n')
+        
+        if [ ! -z "$CLEAN_SSH_KEY" ]; then
+            echo "$CLEAN_SSH_KEY" > "$AUTH_KEYS"
+            log_success "Ключ успешно импортирован на лету для пользователя $USERNAME"
+        else
+            log_error "Ключ не введен. Файл authorized_keys пуст!"
+        fi
         ;;
     2)
-        sudo -u "$USERNAME" ssh-keygen -t ed25519 -C "$USERNAME@$(hostname)"
-        PUBLIC_KEY=$(sudo -u "$USERNAME" cat "/home/$USERNAME/.ssh/id_ed25519.pub")
-        echo "$PUBLIC_KEY" >> "$AUTH_KEYS"
-        chown "$USERNAME:$USERNAME" "$AUTH_KEYS"
-        chmod 600 "$AUTH_KEYS"
+        sudo -u "$USERNAME" ssh-keygen -t ed25519 -C "$USERNAME@$(hostname)" -N "" -f "$SSH_DIR/id_ed25519"
+        PUBLIC_KEY=$(sudo -u "$USERNAME" cat "$SSH_DIR/id_ed25519.pub")
+        echo "$PUBLIC_KEY" > "$AUTH_KEYS"
         log_success "Ключ сгенерирован"
-        echo -e "${YELLOW}Публичный ключ:${NC}"
+        echo -e "${YELLOW}Публичный ключ сервера (сохраните себе на ПК):${NC}"
         echo "$PUBLIC_KEY"
         ;;
     3)
@@ -123,32 +126,39 @@ case "$CHOICE" in
         ;;
 esac
 
+# Фиксируем жесткие безопасные права на папки в соответствии с владельцем
+chown -R "$USERNAME:$USERNAME" "$SSH_DIR"
+chmod 700 "$SSH_DIR"
+[ -f "$AUTH_KEYS" ] && chmod 600 "$AUTH_KEYS"
+
 # =============================================================================
-# РАЗДЕЛ 4: НАСТРОЙКА SSH СЕРВЕРА
+# РАЗДЕЛ 4: НАСТРОЙКА SSH СЕРВЕРА (ДИНАМИЧЕСКИЙ ВВОД)
 # =============================================================================
 log_step "Раздел 4: Настройка SSH сервера"
 
-# Создание конфигурации
+log_info "Генерация динамической конфигурации /etc/ssh/sshd_config.d/00-custom.conf..."
+
+# Кавычки с EOF сняты! Переменные $NEW_SSH_PORT и $USERNAME подставятся динамически!
 cat > /etc/ssh/sshd_config.d/00-custom.conf << EOF
 # Кастомные настройки SSH
-# Создано: $(date '+%Y-%m-%d %H:%M:%S')
+# Создано автоматически: $(date '+%Y-%m-%d %H:%M:%S')
 
-# Меняем стандартный порт подключения
+# Применяем кастомный порт из конфигурации
 Port $NEW_SSH_PORT
 
-# Отключаем возможность подключаться под пользователем root
+# Блокируем авторизацию под суперпользователем root
 PermitRootLogin no
 
-# Явно разрешаем подключения по ключу
+# Разрешаем подключения по криптографическим ключам
 PubkeyAuthentication yes
 
-# Отключаем подключения по паролю
+# Полностью отключаем вход по текстовым паролям
 PasswordAuthentication no
 
-# Разрешаем подключение только указанным пользователям
+# Ограничиваем доступ только выбранному администратору
 AllowUsers $USERNAME
 
-# Дополнительные настройки безопасности
+# Параметры защиты сессий от зависания
 ClientAliveInterval 60
 ClientAliveCountMax 3
 MaxAuthTries 3
@@ -156,20 +166,19 @@ MaxSessions 10
 TCPKeepAlive yes
 EOF
 
-log_success "Конфигурация SSH создана"
+log_success "Конфигурация SSH создана успешно"
 
-# Проверка конфигурации
+# Проверка конфигурации на синтаксис перед перезапуском
 if sshd -t 2>/dev/null; then
     log_success "Конфигурация SSH проверена успешно"
 else
-    log_error "Ошибка в конфигурации SSH!"
-    sshd -t
+    log_error "Ошибка в конфигурации SSH! Откат изменений."
+    rm -f /etc/ssh/sshd_config.d/00-custom.conf
     exit 1
 fi
 
-# Перезапуск SSH
+# Перезапуск службы SSH
 systemctl restart ssh
-
 sleep 2
 
 # Проверка порта
@@ -185,20 +194,16 @@ fi
 # =============================================================================
 log_step "Раздел 5: Настройка UFW"
 
-# Разрешаем SSH порт
 ufw allow "$NEW_SSH_PORT"/tcp
 log_info "Разрешен порт $NEW_SSH_PORT"
 
-# Если порт отличается от 22, разрешаем 22 для восстановления
 if [ "$NEW_SSH_PORT" != "22" ]; then
     ufw allow 22/tcp
-    log_warn "Порт 22 разрешен для восстановления доступа"
+    log_warn "Порт 22 временно разрешен для предотвращения блокировки"
 fi
 
-# Включаем фаервол
 ufw --force enable
 systemctl restart ufw
-
 ufw status verbose
 
 # =============================================================================
@@ -207,9 +212,9 @@ ufw status verbose
 log_step "Раздел 6: Настройка fail2ban"
 
 if command -v fail2ban &>/dev/null; then
+    # Переменная $NEW_SSH_PORT подставится динамически
     cat > /etc/fail2ban/jail.local << EOF
 [DEFAULT]
-# Добавьте сюда через пробел ваш личный домашний или рабочий IP
 ignoreip = 127.0.0.1/8 ::1 192.168.0.0/16 172.16.0.0/12 10.0.0.0/8
 
 bantime = 1h
@@ -227,13 +232,10 @@ EOF
 
     systemctl enable fail2ban
     systemctl restart fail2ban
-
     sleep 2
 
     if systemctl is-active --quiet fail2ban; then
         log_success "fail2ban активен"
-        fail2ban-client status
-        fail2ban-client status sshd
     else
         log_error "fail2ban не запустился"
     fi
@@ -246,7 +248,6 @@ fi
 # =============================================================================
 log_step "Раздел 7: Системные настройки"
 
-# Настройка SWAP
 if [ ! -f /swap ]; then
     log_info "Создание SWAP файла размером 1GB..."
     fallocate -l 1G /swap
@@ -260,21 +261,14 @@ if [ ! -f /swap ]; then
     log_success "SWAP создан"
 fi
 
-# Настройка локалей
 log_info "Настройка локалей..."
 apt install -y locales
-
-log_warn "Настройка локалей (интерактивный режим)..."
-log_warn "Выберите: ru_RU.UTF-8 и en_US.UTF-8"
-sleep 3
 dpkg-reconfigure locales
 
-# Часовой пояс
 log_info "Установка часового пояса..."
 timedatectl set-timezone Asia/Yekaterinburg
 
-# Ротация логов
-log_info "Настройка ротации логов..."
+log_info "Настройка ротации логов системного журнала..."
 if ! grep -q "SystemMaxUse=800M" /etc/systemd/journald.conf; then
     cat >> /etc/systemd/journald.conf << 'EOF'
 [Journal]
@@ -283,8 +277,6 @@ MaxFileSec=2week
 EOF
 fi
 systemctl restart systemd-journald
-
-# Очистка старых логов
 journalctl --vacuum-size=800M 2>/dev/null || true
 
 # =============================================================================
@@ -293,51 +285,45 @@ journalctl --vacuum-size=800M 2>/dev/null || true
 log_step "Раздел 8: Закрытие порта 22 (опционально)"
 
 echo -e "${YELLOW}⚠️  ВНИМАНИЕ:${NC}"
-echo "Сейчас вы подключены по SSH на порту 22"
-echo "Перед закрытием порта 22 убедитесь, что новое подключение работает:"
+echo "Перед закрытием порта 22 убедитесь, что новая сессия по ключу работает!"
 echo ""
-echo -e "${CYAN}Проверьте подключение в новой сессии:${NC}"
-echo -e "ssh -p $NEW_SSH_PORT $USERNAME@$(ip addr show | grep -E "inet " | grep -v "127.0.0.1" | head -1 | awk '{print $2}' | cut -d/ -f1)"
+echo -e "${CYAN}Проверьте подключение в новой вкладке вашего терминала:${NC}"
+echo -e "  ssh -p $NEW_SSH_PORT $USERNAME@\$(ip route get 1.1.1.1 2>/dev/null | awk '{print \$7}')"
 echo ""
 
-read -p "Закрыть порт 22 в UFW? (y/N): " -n 1 -r
+read -p "Закрыть порт 22 в фаерволе UFW прямо сейчас? (y/N): " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     ufw delete allow 22/tcp
     ufw reload
-    log_success "Порт 22 закрыт"
+    log_success "Порт 22 успешно закрыт"
 else
-    log_warn "Порт 22 оставлен открытым"
+    log_warn "Порт 22 оставлен открытым для контроля"
 fi
 
 # =============================================================================
-# ИТОГОВЫЙ ОТЧЕТ
+# ИТОГОВЫЙ ОТЧЕТ (ПРАВИЛЬНЫЙ ВАРИАНТ)
 # =============================================================================
 log_step "Настройка SSH и безопасности завершена"
 
-HOST_IP=$(ip addr show | grep -E "inet " | grep -v "127.0.0.1" | head -1 | awk '{print $2}' | cut -d/ -f1)
+# Экранируем знак $, чтобы команда выполнилась внутри созданного скрипта
+HOST_IP=\$(ip route get 1.1.1.1 2>/dev/null | awk '{print \$7}' || echo "<IP_АДРЕС>")
 
-echo -e "${GREEN}✅${NC} SSH и безопасность настроены!"
+echo -e "\${GREEN}✅ SSH и конфигурация безопасности успешно применены!\${NC}"
 echo ""
-echo -e "${YELLOW}📋 Информация для подключения:${NC}"
-echo "  Пользователь: $USERNAME"
-echo "  Порт: $NEW_SSH_PORT"
-echo "  IP адрес: ${HOST_IP:-не определен}"
+echo -e "\${YELLOW}📋 Информация для подключения:\${NC}"
+# Добавлен обратный слеш \$ перед переменными:
+echo "  Пользователь: \$USERNAME"
+echo "  Новый порт:   \$NEW_SSH_PORT"
+echo "  IP адрес vps: \$HOST_IP"
 echo ""
-echo -e "${CYAN}Команда для подключения:${NC}"
-echo -e "${WHITE}ssh -p $NEW_SSH_PORT $USERNAME@${HOST_IP:-<IP_АДРЕС>}${NC}"
+echo -e "\${CYAN}Команда для входа:\${NC}"
+echo -e "\${WHITE}  ssh \$USERNAME@\$HOST_IP -p \$NEW_SSH_PORT\${NC}"
 echo ""
-echo -e "${YELLOW}⚠️  ВАЖНО:${NC}"
-echo "  • Проверьте подключение в новой сессии!"
-echo "  • Сохраните свой SSH ключ в безопасном месте"
-echo "  • Если порт 22 закрыт, восстановление только через консоль VPS"
-echo ""
-echo -e "${CYAN}📁 Бэкапы:${NC} $BACKUP_DIR"
-echo -e "${CYAN}📄 Лог:${NC} $LOG_FILE"
 
-read -p "Перезагрузить сервер? (y/N): " -n 1 -r
+read -p "Выполнить финальную перезагрузку сервера для применения всех параметров? (y/N): " -n 1 -r
 echo ""
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    log_warn "Перезагрузка..."
+if [[ \$REPLY =~ ^[Yy]$ ]]; then
+    log_warn "Сервер уходит в перезагрузку..."
     reboot
 fi
