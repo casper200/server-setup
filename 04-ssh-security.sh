@@ -211,7 +211,8 @@ ufw status verbose
 # =============================================================================
 log_step "Раздел 6: Настройка fail2ban"
 
-if command -v fail2ban &>/dev/null; then
+if command -v fail2ban-client &>/dev/null; then
+    log_info "Fail2Ban обнаружен в системе. Настройка конфигурации..."
     # Переменная $NEW_SSH_PORT подставится динамически
     cat > /etc/fail2ban/jail.local << EOF
 [DEFAULT]
@@ -302,28 +303,28 @@ else
 fi
 
 # =============================================================================
-# ИТОГОВЫЙ ОТЧЕТ (ПРАВИЛЬНЫЙ ВАРИАНТ)
+# ИТОГОВЫЙ ОТЧЕТ (ЧИСТЫЙ ВАРИАНТ БЕЗ СЛЭШЕЙ)
 # =============================================================================
 log_step "Настройка SSH и безопасности завершена"
 
-# Экранируем знак $, чтобы команда выполнилась внутри созданного скрипта
-HOST_IP=\$(ip route get 1.1.1.1 2>/dev/null | awk '{print \$7}' || echo "<IP_АДРЕС>")
+# ВСЕ СЛЭШИ УБРАНЫ: Переменные выведутся на экран корректно
+HOST_IP=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7}' || echo "<IP_АДРЕС>")
 
-echo -e "\${GREEN}✅ SSH и конфигурация безопасности успешно применены!\${NC}"
+echo -e "${GREEN}✅ SSH и конфигурация безопасности успешно применены!${NC}"
 echo ""
-echo -e "\${YELLOW}📋 Информация для подключения:\${NC}"
-# Добавлен обратный слеш \$ перед переменными:
-echo "  Пользователь: \$USERNAME"
-echo "  Новый порт:   \$NEW_SSH_PORT"
-echo "  IP адрес vps: \$HOST_IP"
+echo -e "${YELLOW}📋 Информация для подключения:${NC}"
+echo "  Пользователь: $USERNAME"
+echo "  Новый порт:   $NEW_SSH_PORT"
+echo "  IP адрес vps: $HOST_IP"
 echo ""
-echo -e "\${CYAN}Команда для входа:\${NC}"
-echo -e "\${WHITE}  ssh \$USERNAME@\$HOST_IP -p \$NEW_SSH_PORT\${NC}"
+echo -e "${CYAN}Команда для входа:${NC}"
+echo -e "${WHITE}  ssh $USERNAME@$HOST_IP -p $NEW_SSH_PORT${NC}"
 echo ""
 
 read -p "Выполнить финальную перезагрузку сервера для применения всех параметров? (y/N): " -n 1 -r
 echo ""
-if [[ \$REPLY =~ ^[Yy]$ ]]; then
+if [[ $REPLY =~ ^[Yy]$ ]]; then
     log_warn "Сервер уходит в перезагрузку..."
     reboot
 fi
+
