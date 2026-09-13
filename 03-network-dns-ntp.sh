@@ -156,28 +156,27 @@ resolvectl query google.com
 # =============================================================================
 log_step "Раздел 3: Настройка NTP"
 
-# Установка systemd-timesyncd
+# 1. Установка службы
 apt install -y systemd-timesyncd 2>&1 | tee -a "$LOG_FILE"
 
-# Конфигурация
+# 2. СНАЧАЛА выставляем правильный часовой пояс, чтобы ntp-пулы выбирались рядом!
+log_info "Смена часового пояса на Asia/Yekaterinburg..."
+timedatectl set-timezone Asia/Yekaterinburg
+
+# 3. Конфигурация серверов времени
 cat > /etc/systemd/timesyncd.conf << 'EOF'
 [Time]
-NTP=0.ru.pool.ntp.org 1.ru.pool.ntp.org 2.ru.pool.ntp.org 3.ru.pool.ntp.org
-FallbackNTP=cloudflare.com 0.pool.ntp.org 1.pool.ntp.org
+NTP=ntp.yandex.ru 0.ru.pool.ntp.org 1.ru.pool.ntp.org
+FallbackNTP=://cloudflare.com 0.debian.pool.ntp.org
 RootDistanceMaxSec=5
 PollIntervalMinSec=32
 PollIntervalMaxSec=2048
 EOF
 
-# Включение
+# 4. Включение и перезапуск
 systemctl enable --now systemd-timesyncd
 timedatectl set-ntp true
-
-sleep 3
-
-log_info "Статус NTP:"
-timedatectl status
-timedatectl timesync-status
+systemctl restart systemd-timesyncd
 
 # =============================================================================
 # РАЗДЕЛ 4: ПРОВЕРКА
