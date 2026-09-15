@@ -49,11 +49,11 @@ LOG_FILE="$BACKUP_DIR/ssh_setup.log"
 # =============================================================================
 log_step "Раздел 1: Ввод данных"
 
-read -p "Введите имя нового пользователя [vasa]: " USERNAME
-USERNAME=${USERNAME:-vasa}
+read -p "Введите имя нового пользователя [vasya]: " USERNAME
+USERNAME=${USERNAME:-vasya}
 
-read -p "Введите порт SSH (по умолчанию: 27244): " NEW_SSH_PORT
-NEW_SSH_PORT=${NEW_SSH_PORT:-27244}
+read -p "Введите порт SSH (по умолчанию: 22444): " NEW_SSH_PORT
+NEW_SSH_PORT=${NEW_SSH_PORT:-22444}
 
 # =============================================================================
 # РАЗДЕЛ 2: СОЗДАНИЕ ПОЛЬЗОВАТЕЛЯ
